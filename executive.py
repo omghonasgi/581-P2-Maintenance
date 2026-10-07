@@ -50,11 +50,23 @@ revealed_safe_cells = 0 # Critical: Counter for measuring progress towards end-g
 # Button/Slider Initialization
 # Details may be changed depending on intent and plans
 # Format = feature(x, y, width, height) , (position and size)
-button_rect = pygame.Rect(132, 300, 160, 50) # Position the start button below the mine count selector
+button_rect = pygame.Rect(132, 365, 160, 50) # Position the start button below the mode radio buttons
 slider_rect = pygame.Rect(112, 236, 200, 12) # Defines the draggable slider handle. 
 handle_rect = pygame.Rect(112, 226, 16, 32) # Editable: Create draggable handle for changing mine count
 handle_color = (196, 194, 188) # Editable: Sets the slider handle to a light gray color.
 slider_color = (150, 148, 142) # Editable Medium grat slider exterior
+
+# Radio button click areas for selecting game mode on the start screen.
+# Stacked vertically between the slider handle (bottom ~y=258) and the Start button (y=365)
+# so each label has enough horizontal room. Left-aligned at the same x for a clean column.
+ai_mode_rect = pygame.Rect(140, 263, 220, 26)        # Click area for the "AI Mode (Interactive)" radio button
+ai_auto_mode_rect = pygame.Rect(140, 293, 220, 26)   # Click area for the "AI Mode (Automatic)" radio button
+manual_mode_rect = pygame.Rect(140, 323, 220, 26)    # Click area for the "Manual Mode" radio button
+
+# Stores the player's chosen game mode. Set by the radio buttons on the start screen
+# and can be referenced later by other game logic (e.g. AI-driven play vs. manual input).
+# Valid values: "AI" (interactive AI), "AI_AUTO" (fully automatic AI), or "Manual". Defaults to "Manual".
+GAME_MODE = "Manual"
 
 
 #Retro color palette
@@ -226,6 +238,19 @@ def draw_plate(screen, rect, label, color):
     screen.blit(text, text.get_rect(center=rect.center))
 
 
+def draw_radio(screen, rect, label, selected):
+    # Draws a classic circular radio button at the left edge of rect, with the
+    # label text to its right. When selected is True, fills in the inner dot.
+    cx = rect.left + 10
+    cy = rect.centery
+    pygame.draw.circle(screen, REVEALED, (cx, cy), 9)       # Light inset background
+    pygame.draw.circle(screen, SHADOW, (cx, cy), 9, 2)      # Dark ring outline
+    if selected:
+        pygame.draw.circle(screen, TEXT_COLOR, (cx, cy), 4) # Filled dot = chosen
+    text = get_font(22, bold=True).render(label, True, TEXT_COLOR)
+    screen.blit(text, text.get_rect(midleft=(cx + 14, cy)))
+
+
 def draw_cell(screen, row, col, outcome=None, exploded=None):
     x = BOARD_X + col * CELL_SIZE
     y = BOARD_Y + row * CELL_SIZE
@@ -304,6 +329,7 @@ def run_game():
         
     global NUMBER_OF_MINES # Critical: Variable is effected throughout multiple functions and thus should stay global
     global SAFE_CELLS
+    global GAME_MODE # Tracks the player's selected game mode ("AI", "AI_AUTO", or "Manual") from the start screen radio buttons
     # Variable is effected throughout multiple functions and thus should stay global
 
      # This block initializes the starting conditions of the game; as a window of a certain size displaying what it's for, and starting off with most conditions being at zero or the bare minimum   
@@ -341,6 +367,13 @@ def run_game():
                         dragging = True
                     elif button_rect.collidepoint(event.pos):
                         slider_value_picked = True
+                    # Mutually exclusive mode selection: clicking a radio button overrides the others
+                    elif ai_mode_rect.collidepoint(event.pos):
+                        GAME_MODE = "AI"
+                    elif ai_auto_mode_rect.collidepoint(event.pos):
+                        GAME_MODE = "AI_AUTO"
+                    elif manual_mode_rect.collidepoint(event.pos):
+                        GAME_MODE = "Manual"
                 elif event.type == pygame.MOUSEBUTTONUP:
                     dragging = False
                 elif event.type == pygame.MOUSEMOTION and dragging:
@@ -407,6 +440,11 @@ def run_game():
             draw_bevel(screen, slider_rect, raised=False, width=2)
             pygame.draw.rect(screen, handle_color, handle_rect)
             draw_bevel(screen, handle_rect)
+
+            # draw the mode-selection radio buttons (mutually exclusive)
+            draw_radio(screen, ai_mode_rect, "AI Mode (Interactive)", GAME_MODE == "AI")
+            draw_radio(screen, ai_auto_mode_rect, "AI Mode (Automatic)", GAME_MODE == "AI_AUTO")
+            draw_radio(screen, manual_mode_rect, "Manual Mode", GAME_MODE == "Manual")
 
             #draw the start button
             draw_plate(screen, button_rect, "Start", TEXT_COLOR)
