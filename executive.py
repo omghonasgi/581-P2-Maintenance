@@ -20,10 +20,10 @@ Creation Date: September 9, 2026
 '''
 '''
 581 Project 2 Sources:
-Authors: Om Ghonasgi
+Authors: Om Ghonasgi, Adam Darst, Axel Bengoa
 Sources: Tutorial for adding audio to PyGame: https://opensource.com/article/20/9/add-sound-python-game
         Audio files: https://pixabay.com/sound-effects/
-        Cursor Agent mode with Claude Opus 4.7
+        Cursor Agent mode with Claude Opus 4.7, Copilot GPT-5.6
 Modified Date: 10/8/2026
 '''
 from cell import Cell # Import cell class from project folder
@@ -94,6 +94,82 @@ NUMBER_COLORS = {1: (30, 60, 200), 2: (20, 125, 40), 3: (200, 30, 30), 4: (30, 3
 
 grid = [[Cell() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
 # Critical: Creates board, given each iteration is of cell class, using the range of the grid
+
+def adjacent_cells(input_row, input_col):
+    """Return the valid cells surrounding a board position."""
+    cells = []
+    for row_offset in [-1, 0, 1]:
+        for col_offset in [-1, 0, 1]:
+            if row_offset == 0 and col_offset == 0:
+                continue
+            row = input_row + row_offset
+            col = input_col + col_offset
+            if 0 <= row < GRID_SIZE and 0 <= col < GRID_SIZE:
+                cells.append((row, col))
+    return cells
+
+
+def reset_board():
+    """Clear the board so starting a new game does not reuse old state."""
+    global grid, revealed_safe_cells
+    grid = [[Cell() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+    revealed_safe_cells = 0
+
+
+def ai_solver_step():
+    """Perform one rule-based AI move.
+
+    The AI first flags one cell that must be a mine, then opens one cell that
+    must be safe. If neither deduction is available, it opens one random
+    unflagged cell. Returning after one cell keeps the action delay between
+    every visible AI move.
+    The return value matches ``reveal``: ``"win"``, ``"lost"``, or ``True``.
+    """
+    for row in range(GRID_SIZE):
+        for col in range(GRID_SIZE):
+            current = grid[row][col]
+            if not current.is_revealed or current.adjacent_mines == 0:
+                continue
+
+            neighbors = adjacent_cells(row, col)
+            hidden = [
+                position for position in neighbors
+                if not grid[position[0]][position[1]].is_revealed
+                and not grid[position[0]][position[1]].is_flagged
+            ]
+            flagged = [
+                position for position in neighbors
+                if grid[position[0]][position[1]].is_flagged
+            ]
+
+            if hidden and len(hidden) + len(flagged) == current.adjacent_mines:
+                hidden_row, hidden_col = hidden[0]
+                grid[hidden_row][hidden_col].is_flagged = True
+                flag_sound.play()
+                return True
+
+            if hidden and len(flagged) == current.adjacent_mines:
+                hidden_row, hidden_col = hidden[0]
+                result = reveal(hidden_row, hidden_col)
+                if result is False:
+                    return "lost"
+                return result
+
+    hidden_cells = [
+        (row, col)
+        for row in range(GRID_SIZE)
+        for col in range(GRID_SIZE)
+        if not grid[row][col].is_revealed and not grid[row][col].is_flagged
+    ]
+    if not hidden_cells:
+        return "win" if revealed_safe_cells == SAFE_CELLS else True
+
+    row, col = random.choice(hidden_cells)
+    result = reveal(row, col)
+    if result is False:
+        return "lost"
+    return result
+
 
 # initalize the audio files, and set the volume to 0.5
 pygame.mixer.init()
@@ -369,6 +445,9 @@ def run_game():
     exploded = None
     start_ticks = 0
     seconds = 0
+    ai_last_action = 0
+    AI_ACTION_DELAY = 300  # milliseconds between AI actions
+    ai_turn = False
 
     #Game loop set up with reference from Geeks to Geeks PyGame tutorial
     while True:
@@ -388,6 +467,17 @@ def run_game():
                         dragging = True
                     elif button_rect.collidepoint(event.pos):
                         slider_value_picked = True
+                        NUMBER_OF_MINES = slider_value
+                        SAFE_CELLS = GRID_SIZE * GRID_SIZE - NUMBER_OF_MINES
+                        reset_board()
+                        if GAME_MODE == "AI_AUTO":
+                            first_click(
+                                random.randrange(GRID_SIZE),
+                                random.randrange(GRID_SIZE),
+                            )
+                            first_move_done = True
+                            ai_turn = True
+                            start_ticks = pygame.time.get_ticks()
                     # Mutually exclusive mode selection: clicking a radio button overrides the others
                     elif ai_mode_rect.collidepoint(event.pos):
                         GAME_MODE = "AI"
@@ -416,7 +506,8 @@ def run_game():
                     
 
             # If player clicks anywhere in the game and it doesn't end (can be revealing tile or clicking on the window or a revealed tile), 
-            elif event.type == pygame.MOUSEBUTTONDOWN and not game_over:
+            elif (event.type == pygame.MOUSEBUTTONDOWN and not game_over
+                  and (GAME_MODE != "AI" or not ai_turn)):
                 col = (event.pos[0] - BOARD_X)//CELL_SIZE
                 row = (event.pos[1] - BOARD_Y)//CELL_SIZE
 
@@ -428,6 +519,8 @@ def run_game():
                             if not first_move_done:
                                 first_click(row, col)
                                 first_move_done = True
+                                if GAME_MODE == "AI":
+                                    ai_turn = True
                                 start_ticks = pygame.time.get_ticks()
                             else:
                                 result = reveal(row, col)
@@ -443,6 +536,8 @@ def run_game():
                                     print("You win!")
                                     win_sound.play()
                                     outcome = "won"
+                                if GAME_MODE == "AI" and not game_over:
+                                    ai_turn = True
                     elif event.button == 3:
                         if not grid[row][col].is_revealed:
                             if grid[row][col].is_flagged:
@@ -450,6 +545,25 @@ def run_game():
                             else:
                                 grid[row][col].is_flagged = True
                                 flag_sound.play()
+                            if GAME_MODE == "AI":
+                                ai_turn = True
+
+        if (slider_value_picked and first_move_done and not game_over
+                and (GAME_MODE == "AI_AUTO" or (GAME_MODE == "AI" and ai_turn))):
+            now = pygame.time.get_ticks()
+            if now - ai_last_action >= AI_ACTION_DELAY:
+                ai_last_action = now
+                result = ai_solver_step()
+                if result == "lost":
+                    game_over = True
+                    outcome = "lost"
+                    explosion_sound.play()
+                elif result == "win":
+                    game_over = True
+                    outcome = "won"
+                    win_sound.play()
+                elif GAME_MODE == "AI":
+                    ai_turn = False
                                     
         if not slider_value_picked:
             #draw the slider
