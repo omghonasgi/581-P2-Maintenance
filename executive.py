@@ -18,7 +18,14 @@ External Sources: W3Schools Pygame Tutorial for reference in initializing PyGame
 Authors: Abdulaziz Arab, Felix Balandran, Jamareon Davis, John Vitha, Riley Backus, William Grimsley
 Creation Date: September 9, 2026
 '''
-
+'''
+581 Project 2 Sources:
+Authors: Om Ghonasgi
+Sources: Tutorial for adding audio to PyGame: https://opensource.com/article/20/9/add-sound-python-game
+        Audio files: https://pixabay.com/sound-effects/
+        Cursor Agent mode with Claude Opus 4.7
+Modified Date: 10/8/2026
+'''
 from cell import Cell # Import cell class from project folder
 import random
 import pygame
@@ -88,6 +95,18 @@ NUMBER_COLORS = {1: (30, 60, 200), 2: (20, 125, 40), 3: (200, 30, 30), 4: (30, 3
 grid = [[Cell() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
 # Critical: Creates board, given each iteration is of cell class, using the range of the grid
 
+# initalize the audio files, and set the volume to 0.5
+pygame.mixer.init()
+explosion_sound = pygame.mixer.Sound("audio/explosion.mp3")
+reveal_sound = pygame.mixer.Sound("audio/reveal.mp3")
+flag_sound = pygame.mixer.Sound("audio/flagplace.mp3")
+win_sound = pygame.mixer.Sound("audio/win.mp3")
+
+explosion_sound.set_volume(0.5) 
+reveal_sound.set_volume(0.5)
+flag_sound.set_volume(0.5)
+win_sound.set_volume(0.5)
+
 def recursive_sweep(input_row, input_col): # Critical Function: recursively searches for adjacent safe cells using current cell's position
     global revealed_safe_cells
 
@@ -148,13 +167,14 @@ def first_click(input_row, input_col): #Critical Function: logic initializing wh
                     # Can be reduced to one if statement, but this can also help with readability and understanding the process      
 
     recursive_sweep(input_row, input_col)
+    reveal_sound.play()
   # Start flood filled, recursive reveal from the first clicked cell
 
 
 def reveal(input_row, input_col): # Critical Function: Uses the recursive sweeps to reveal mines.
     if grid[input_row][input_col].has_mine:
         return False # Base Case - if the cell has a mine
-
+    reveal_sound.play()
     recursive_sweep(input_row, input_col) # Uses the recursive sweeps to reveal mines.
 
     if revealed_safe_cells == SAFE_CELLS:
@@ -334,6 +354,7 @@ def run_game():
 
      # This block initializes the starting conditions of the game; as a window of a certain size displaying what it's for, and starting off with most conditions being at zero or the bare minimum   
     pygame.init()
+
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT)) # Initializes the size of the window to be the size of the board
     pygame.display.set_caption("Minesweeper") # Set window name to be "Minesweeper"
     first_move_done = False # Game starts off letting the user do the first move
@@ -414,10 +435,13 @@ def run_game():
                                     game_over = True
                                     print("Boom.")
                                     outcome = "lost"
+                                    # Play the sound effect when an explosion happens
+                                    explosion_sound.play()
                                     exploded = (row, col)
                                 elif result == "win":
                                     game_over = True
                                     print("You win!")
+                                    win_sound.play()
                                     outcome = "won"
                     elif event.button == 3:
                         if not grid[row][col].is_revealed:
@@ -425,6 +449,7 @@ def run_game():
                                 grid[row][col].is_flagged = False
                             else:
                                 grid[row][col].is_flagged = True
+                                flag_sound.play()
                                     
         if not slider_value_picked:
             #draw the slider
