@@ -12,6 +12,7 @@ Minesweeper built in Python with [Pygame](https://www.pygame.org/). Reveal every
 - **Adjacent mine counts**, revealed cells that border at least one mine display the number of mines touching them.
 - **Flagging**, right-click any hidden cell to mark it as a suspected mine (and right-click again to unflag it).
 - **Rule-based AI (Medium)**, select **AI Mode (Interactive)** to alternate turns with the AI (you move first), or **AI Mode (Automatic)** to watch it play the whole board, then pick **Medium** on the difficulty screen. The AI makes one action per turn: it flags covered neighbors when a number equals its covered-neighbor count, opens covered neighbors when a number already has that many flags, and otherwise guesses a random covered cell. The bar under the board explains each move, and the cell it acted on (orange) and the number that justified it (blue) are outlined. See [`documentation/medium-ai.md`](documentation/medium-ai.md).
+- **Rule-based AI (Hard)**, pick **Hard** on the difficulty screen. The AI uses the Medium rules and adds the 1-2-1 pattern: when three side-by-side numbers read 1-2-1 along a line of covered cells, it opens the cell across from the 2 and flags the cells across from the 1s. If no rule applies, it guesses. See [`documentation/hard-ai.md`](documentation/hard-ai.md).
 - **Win/Loss detection**, the game ends the moment you reveal a mine (loss) or reveal every non-mine cell on the board (win).
 
 ## Installation

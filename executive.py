@@ -35,8 +35,16 @@ Sources: Claude Code (Claude Opus 5.5) used to help write the AI turn loop, info
          Sections written with it are marked "Combined (Claude Code)" below.
 Modified Date: 10/10/2026
 '''
+'''
+581 Project 2 - Hard AI integration:
+Authors: Marcos Lepage, Jal Maru
+Description: Registers ai_solver.hard_move under "Hard" in AI_STRATEGIES so the existing turn loop,
+             highlight and info bar run the Hard AI. No other changes to this file.
+Sources: Claude Code (Claude Opus 5.5) assisted.
+Modified Date: 10/10/2026
+'''
 from cell import Cell # Import cell class from project folder
-import ai_solver # AI strategies (Medium); kept separate from pygame so the rules can be tested headlessly
+import ai_solver # AI strategies (Medium, Hard); kept separate from pygame so the rules can be tested headlessly
 import random
 import pygame
 
@@ -105,9 +113,10 @@ AI_DIFFICULTY = "Easy"
 AI_MOVE_DELAY = 500 # Editable: Milliseconds the AI waits before each action so every move can be watched
 
 # Maps a difficulty name to a function grid -> ai_solver.AIMove (or None when no move is left).
-# Add Easy/Hard here; a difficulty with no entry leaves the AI idle.
+# Add Easy here; a difficulty with no entry leaves the AI idle.
 AI_STRATEGIES = {
     "Medium": ai_solver.medium_move,
+    "Hard": ai_solver.hard_move,
 }
 
 
