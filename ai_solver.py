@@ -1,5 +1,5 @@
 '''
-ai_solver.py - Rule-based Minesweeper AI (Medium difficulty)
+ai_solver.py - Rule-based Minesweeper AI (Medium and Hard difficulties)
 
 Description: Decides the AI's next move from the current board. The solver never
              changes the board itself; it returns an AIMove describing what to do
@@ -16,18 +16,26 @@ Medium rules (from the EECS 581 Project 2 specification):
     Fallback: if neither rule applies anywhere, open a random covered, unflagged cell.
     The AI makes exactly one action per call so every move is visible on screen.
 
+Hard rules: Medium's two rules first, then the 1-2-1 pattern, then the random guess.
+    1-2-1 pattern: if three side-by-side revealed numbers read 1-2-1 (after
+            subtracting flags already around them) and all their unflagged covered
+            neighbors lie in one line beside them, the cells directly across from
+            the two 1s are mines and the cell directly across from the 2 is safe.
+
 Inputs:  grid - 2D list of cell.Cell objects (has_mine is never read, so the AI
                 cannot cheat; only is_revealed, is_flagged and adjacent_mines are used)
          rng  - optional random source (defaults to the random module) for testing
 Outputs: AIMove(action, row, col, rule, source, reason) or None when no covered,
-         unflagged cell is left to act on
+         unflagged cell is left to act on (medium_move, hard_move)
 
-External Sources: Medium rule definitions from the EECS 581 Project 2 assignment.
+External Sources: Medium and Hard rule definitions from the EECS 581 Project 2 assignment.
                   AI Usage: Claude Code (Claude Opus 5.5) helped restructure the
                   original in-executive solver into this module and write the
-                  move-explanation text. Combined code is marked below.
+                  move-explanation text, and helped write the 1-2-1 pattern search.
+                  Combined code is marked below.
 
-Authors: Axel Bengoa, Adam Darst (original rule loop in executive.py, commit f212149)
+Authors: Axel Bengoa, Adam Darst (Medium; original rule loop in executive.py, commit f212149)
+         Marcos Lepage, Jal Maru (Hard; effective_number, unknown_neighbors, one_two_one_move, hard_move)
 Creation Date: October 10, 2026
 '''
 import random
@@ -62,6 +70,20 @@ def neighbors(grid, input_row, input_col):
             if 0 <= row < size and 0 <= col < size:
                 cells.append((row, col))
     return cells
+
+
+def effective_number(grid, row, col):
+    # Number minus the flags around it: mines still hidden among its unknown neighbors.
+    # Used by the Hard rule; same covered/flagged definitions as deduce_move.
+    flagged = [p for p in neighbors(grid, row, col)
+               if not grid[p[0]][p[1]].is_revealed and grid[p[0]][p[1]].is_flagged]
+    return grid[row][col].adjacent_mines - len(flagged)
+
+
+def unknown_neighbors(grid, row, col):
+    # Covered, unflagged neighbors: the only cells the AI can still act on.
+    return [p for p in neighbors(grid, row, col)
+            if not grid[p[0]][p[1]].is_revealed and not grid[p[0]][p[1]].is_flagged]
 
 
 def deduce_move(grid):
@@ -118,3 +140,59 @@ def guess_move(grid, rng=random):
 def medium_move(grid, rng=random):
     # Medium difficulty: the two counting rules, otherwise a random guess
     return deduce_move(grid) or guess_move(grid, rng)
+
+
+def one_two_one_move(grid):
+    # Combined: finds three side-by-side numbers reading 1-2-1 (after flags) whose
+    # unknown neighbors all lie in one line beside them. In that line, the cells across
+    # from the 1s are mines and the cell across from the 2 is safe.
+    # One action per call: open the safe cell, then flag a mine.
+    size = len(grid)
+    # (along, across): direction the three numbers run in, and the direction
+    # from the numbers to the line of hidden cells
+    orientations = [((0, 1), (-1, 0)), ((0, 1), (1, 0)),   # row of numbers, line above / below
+                    ((1, 0), (0, -1)), ((1, 0), (0, 1))]   # column of numbers, line left / right
+
+    def on_board(p):
+        return 0 <= p[0] < size and 0 <= p[1] < size
+
+    for row in range(size):
+        for col in range(size):
+            for (dr, dc), (sr, sc) in orientations:
+                left, middle, right = (row - dr, col - dc), (row, col), (row + dr, col + dc)
+                trio = [left, middle, right]
+                if not all(on_board(p) and grid[p[0]][p[1]].is_revealed for p in trio):
+                    continue
+                if [effective_number(grid, *p) for p in trio] != [1, 2, 1]:
+                    continue
+
+                # The five cells in the line beside the trio (a, b, c, d, e in the doc)
+                line = [(row + sr + k * dr, col + sc + k * dc) for k in range(-2, 3)]
+
+                # Any unknown neighbor outside that line means the pattern proves nothing
+                unknown = {p for t in trio for p in unknown_neighbors(grid, *t)}
+                if not unknown <= set(line):
+                    continue
+
+                outer = [line[1], line[3]]  # Across from the 1s: mines
+                inner = line[2]             # Across from the 2: safe
+                if not all(p in unknown for p in outer):
+                    continue  # Board contradicts the pattern (a wrong player flag); don't act on it
+
+                trio_text = "-".join(cell_name(*p) for p in trio)
+                raw = [grid[p[0]][p[1]].adjacent_mines for p in trio]
+                shown = "" if raw == [1, 2, 1] else f" ({'-'.join(map(str, raw))} minus flags)"
+
+                if inner in unknown:
+                    return AIMove("reveal", inner[0], inner[1], "one-two-one", middle,
+                                  f"Open {cell_name(*inner)}: 1-2-1 at {trio_text}{shown}")
+                target = outer[0]
+                return AIMove("flag", target[0], target[1], "one-two-one", middle,
+                              f"Flag {cell_name(*target)}: 1-2-1 at {trio_text}{shown}")
+
+    return None
+
+
+def hard_move(grid, rng=random):
+    # Hard difficulty: Medium's counting rules, then the 1-2-1 pattern, otherwise a random guess
+    return deduce_move(grid) or one_two_one_move(grid) or guess_move(grid, rng)
