@@ -75,6 +75,22 @@ manual_mode_rect = pygame.Rect(140, 323, 220, 26)    # Click area for the "Manua
 # Valid values: "AI" (interactive AI), "AI_AUTO" (fully automatic AI), or "Manual". Defaults to "Manual".
 GAME_MODE = "Manual"
 
+# Difficulty-selection overlay shown AFTER the Start button is clicked, but ONLY when
+# GAME_MODE is "AI" or "AI_AUTO". Manual mode skips this screen entirely and goes
+# straight to the gameboard.
+# The overlay panel is drawn centered on top of the (empty) board so the player sees
+# the game in context behind it.
+difficulty_overlay_rect = pygame.Rect(70, 130, 328, 340)
+easy_rect   = pygame.Rect(140, 240, 220, 26)   # Click area for "Easy"   radio button
+medium_rect = pygame.Rect(140, 280, 220, 26)   # Click area for "Medium" radio button
+hard_rect   = pygame.Rect(140, 320, 220, 26)   # Click area for "Hard"   radio button
+confirm_button_rect = pygame.Rect(144, 400, 160, 50)  # "Confirm" button inside the overlay
+
+# Stores the chosen AI difficulty. Set via the overlay after Start is clicked when
+# GAME_MODE is "AI" or "AI_AUTO". Valid values: "Easy", "Medium", "Hard". Defaults to "Easy".
+# Can be referenced later by AI logic to tune its behavior.
+AI_DIFFICULTY = "Easy"
+
 
 #Retro color palette
 FACE = (196, 194, 188) 
@@ -271,6 +287,25 @@ def draw_radio(screen, rect, label, selected):
     screen.blit(text, text.get_rect(midleft=(cx + 14, cy)))
 
 
+def draw_difficulty_overlay(screen):
+    # Beveled panel centered on top of the board, matching the retro UI style.
+    # Shown only when GAME_MODE is "AI" or "AI_AUTO" after the Start button is clicked.
+    pygame.draw.rect(screen, FACE, difficulty_overlay_rect)
+    draw_bevel(screen, difficulty_overlay_rect, raised=True, width=3)
+
+    # Title
+    title = get_font(32, bold=True).render("Select AI Difficulty", True, TEXT_COLOR)
+    screen.blit(title, title.get_rect(center=(difficulty_overlay_rect.centerx,
+                                              difficulty_overlay_rect.top + 40)))
+    # Mutually exclusive radio buttons
+    draw_radio(screen, easy_rect,   "Easy",   AI_DIFFICULTY == "Easy")
+    draw_radio(screen, medium_rect, "Medium", AI_DIFFICULTY == "Medium")
+    draw_radio(screen, hard_rect,   "Hard",   AI_DIFFICULTY == "Hard")
+
+    # Confirm button to lock in the choice and proceed to the game
+    draw_plate(screen, confirm_button_rect, "Confirm", TEXT_COLOR)
+
+
 def draw_cell(screen, row, col, outcome=None, exploded=None):
     x = BOARD_X + col * CELL_SIZE
     y = BOARD_Y + row * CELL_SIZE
@@ -350,6 +385,7 @@ def run_game():
     global NUMBER_OF_MINES # Critical: Variable is effected throughout multiple functions and thus should stay global
     global SAFE_CELLS
     global GAME_MODE # Tracks the player's selected game mode ("AI", "AI_AUTO", or "Manual") from the start screen radio buttons
+    global AI_DIFFICULTY # Tracks the chosen AI difficulty ("Easy", "Medium", "Hard") selected on the overlay after Start
     # Variable is effected throughout multiple functions and thus should stay global
 
      # This block initializes the starting conditions of the game; as a window of a certain size displaying what it's for, and starting off with most conditions being at zero or the bare minimum   
@@ -363,6 +399,11 @@ def run_game():
     dragging=False # Starts off with the slider being motionless
     slider_value_picked = False 
     slider_value = 10
+
+    # Tracks whether the AI difficulty overlay has been dismissed.
+    # Manual mode never shows the overlay so it's effectively True from the start of the game screen;
+    # for AI / AI_AUTO modes it stays False until the player confirms a difficulty.
+    difficulty_picked = False
         
     #Display-only state for the header and loss screen
     outcome = None
@@ -388,6 +429,8 @@ def run_game():
                         dragging = True
                     elif button_rect.collidepoint(event.pos):
                         slider_value_picked = True
+                        # Manual mode skips the difficulty overlay; AI modes must still pick one.
+                        difficulty_picked = (GAME_MODE == "Manual")
                     # Mutually exclusive mode selection: clicking a radio button overrides the others
                     elif ai_mode_rect.collidepoint(event.pos):
                         GAME_MODE = "AI"
@@ -414,6 +457,20 @@ def run_game():
                     SAFE_CELLS=GRID_SIZE * GRID_SIZE - NUMBER_OF_MINES
 
                     
+
+            # Difficulty-selection overlay: shown only in AI / AI_AUTO modes.
+            # Blocks board input until the player confirms a difficulty.
+            elif not difficulty_picked:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    # Mutually exclusive difficulty selection
+                    if easy_rect.collidepoint(event.pos):
+                        AI_DIFFICULTY = "Easy"
+                    elif medium_rect.collidepoint(event.pos):
+                        AI_DIFFICULTY = "Medium"
+                    elif hard_rect.collidepoint(event.pos):
+                        AI_DIFFICULTY = "Hard"
+                    elif confirm_button_rect.collidepoint(event.pos):
+                        difficulty_picked = True
 
             # If player clicks anywhere in the game and it doesn't end (can be revealing tile or clicking on the window or a revealed tile), 
             elif event.type == pygame.MOUSEBUTTONDOWN and not game_over:
@@ -482,4 +539,11 @@ def run_game():
             draw_header(screen, outcome, seconds)
             draw_labels(screen)
             draw_board(screen, outcome, exploded)
+
+            # Draw the AI difficulty overlay on top of the (empty) board so the
+            # player sees the game context behind the modal. Only reached when
+            # GAME_MODE is "AI" or "AI_AUTO" because Manual mode sets
+            # difficulty_picked = True immediately after Start.
+            if not difficulty_picked:
+                draw_difficulty_overlay(screen)
         pygame.display.flip()
