@@ -18,7 +18,14 @@ External Sources: W3Schools Pygame Tutorial for reference in initializing PyGame
 Authors: Abdulaziz Arab, Felix Balandran, Jamareon Davis, John Vitha, Riley Backus, William Grimsley
 Creation Date: September 9, 2026
 '''
-
+'''
+581 Project 2 Sources:
+Authors: Om Ghonasgi
+Sources: Tutorial for adding audio to PyGame: https://opensource.com/article/20/9/add-sound-python-game
+        Audio files: https://pixabay.com/sound-effects/
+        Cursor Agent mode with Claude Opus 4.7
+Modified Date: 10/8/2026
+'''
 from cell import Cell # Import cell class from project folder
 import random
 import pygame
@@ -50,11 +57,41 @@ revealed_safe_cells = 0 # Critical: Counter for measuring progress towards end-g
 # Button/Slider Initialization
 # Details may be changed depending on intent and plans
 # Format = feature(x, y, width, height) , (position and size)
-button_rect = pygame.Rect(132, 300, 160, 50) # Position the start button below the mine count selector
+button_rect = pygame.Rect(132, 365, 160, 50) # Position the start button below the mode radio buttons
 slider_rect = pygame.Rect(112, 236, 200, 12) # Defines the draggable slider handle. 
 handle_rect = pygame.Rect(112, 226, 16, 32) # Editable: Create draggable handle for changing mine count
 handle_color = (196, 194, 188) # Editable: Sets the slider handle to a light gray color.
 slider_color = (150, 148, 142) # Editable Medium grat slider exterior
+
+# Radio button click areas for selecting game mode on the start screen.
+# Stacked vertically between the slider handle (bottom ~y=258) and the Start button (y=365)
+# so each label has enough horizontal room. Left-aligned at the same x for a clean column.
+ai_mode_rect = pygame.Rect(140, 263, 220, 26)        # Click area for the "AI Mode (Interactive)" radio button
+ai_auto_mode_rect = pygame.Rect(140, 293, 220, 26)   # Click area for the "AI Mode (Automatic)" radio button
+manual_mode_rect = pygame.Rect(140, 323, 220, 26)    # Click area for the "Manual Mode" radio button
+
+# Stores the player's chosen game mode. Set by the radio buttons on the start screen
+# and can be referenced later by other game logic (e.g. AI-driven play vs. manual input).
+# Valid values: "AI" (interactive AI), "AI_AUTO" (fully automatic AI), or "Manual". Defaults to "Manual".
+GAME_MODE = "Manual"
+
+# Difficulty-selection overlay shown AFTER the Start button is clicked, but ONLY when
+# GAME_MODE is "AI" or "AI_AUTO". Manual mode skips this screen entirely and goes
+# straight to the gameboard.
+# The overlay panel is drawn centered on top of the (empty) board so the player sees
+# the game in context behind it.
+difficulty_overlay_rect = pygame.Rect(70, 130, 328, 340)
+easy_rect   = pygame.Rect(140, 240, 220, 26)   # Click area for "Easy"   radio button
+medium_rect = pygame.Rect(140, 280, 220, 26)   # Click area for "Medium" radio button
+hard_rect   = pygame.Rect(140, 320, 220, 26)   # Click area for "Hard"   radio button
+confirm_button_rect = pygame.Rect(144, 400, 160, 50)  # "Confirm" button inside the overlay
+
+# Stores the chosen AI difficulty. Set via the overlay after Start is clicked when
+# GAME_MODE is "AI" or "AI_AUTO". Valid values: "Easy", "Medium", "Hard". Defaults to "Easy".
+# Can be referenced later by AI logic to tune its behavior.
+AI_DIFFICULTY = "Easy"
+
+AI_MOVE_DELAY = 1500 # Editable: Milliseconds the AI waits before it uncovers a cell
 
 
 #Retro color palette
@@ -75,6 +112,18 @@ NUMBER_COLORS = {1: (30, 60, 200), 2: (20, 125, 40), 3: (200, 30, 30), 4: (30, 3
 
 grid = [[Cell() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
 # Critical: Creates board, given each iteration is of cell class, using the range of the grid
+
+# initalize the audio files, and set the volume to 0.5
+pygame.mixer.init()
+explosion_sound = pygame.mixer.Sound("audio/explosion.mp3")
+reveal_sound = pygame.mixer.Sound("audio/reveal.mp3")
+flag_sound = pygame.mixer.Sound("audio/flagplace.mp3")
+win_sound = pygame.mixer.Sound("audio/win.mp3")
+
+explosion_sound.set_volume(0.5) 
+reveal_sound.set_volume(0.5)
+flag_sound.set_volume(0.5)
+win_sound.set_volume(0.5)
 
 def recursive_sweep(input_row, input_col): # Critical Function: recursively searches for adjacent safe cells using current cell's position
     global revealed_safe_cells
@@ -136,13 +185,14 @@ def first_click(input_row, input_col): #Critical Function: logic initializing wh
                     # Can be reduced to one if statement, but this can also help with readability and understanding the process      
 
     recursive_sweep(input_row, input_col)
+    reveal_sound.play()
   # Start flood filled, recursive reveal from the first clicked cell
 
 
 def reveal(input_row, input_col): # Critical Function: Uses the recursive sweeps to reveal mines.
     if grid[input_row][input_col].has_mine:
         return False # Base Case - if the cell has a mine
-
+    reveal_sound.play()
     recursive_sweep(input_row, input_col) # Uses the recursive sweeps to reveal mines.
 
     if revealed_safe_cells == SAFE_CELLS:
@@ -150,6 +200,20 @@ def reveal(input_row, input_col): # Critical Function: Uses the recursive sweeps
     # If all of the safe cells have been revealed, end the game announcing the player's win  
 
     return True
+
+
+# Easy AI: picks a completely random cell out of the covered, unflagged cells
+def easy_ai_move():
+    remaining = []
+    for i in range(GRID_SIZE):
+        for j in range(GRID_SIZE):
+            if not grid[i][j].is_revealed and not grid[i][j].is_flagged:
+                remaining.append((i, j))
+
+    if len(remaining) == 0:
+        return None
+
+    return remaining[random.randint(0, len(remaining) - 1)]
 
 _fonts = {}
 # Used for get_font
@@ -226,6 +290,38 @@ def draw_plate(screen, rect, label, color):
     screen.blit(text, text.get_rect(center=rect.center))
 
 
+def draw_radio(screen, rect, label, selected):
+    # Draws a classic circular radio button at the left edge of rect, with the
+    # label text to its right. When selected is True, fills in the inner dot.
+    cx = rect.left + 10
+    cy = rect.centery
+    pygame.draw.circle(screen, REVEALED, (cx, cy), 9)       # Light inset background
+    pygame.draw.circle(screen, SHADOW, (cx, cy), 9, 2)      # Dark ring outline
+    if selected:
+        pygame.draw.circle(screen, TEXT_COLOR, (cx, cy), 4) # Filled dot = chosen
+    text = get_font(22, bold=True).render(label, True, TEXT_COLOR)
+    screen.blit(text, text.get_rect(midleft=(cx + 14, cy)))
+
+
+def draw_difficulty_overlay(screen):
+    # Beveled panel centered on top of the board, matching the retro UI style.
+    # Shown only when GAME_MODE is "AI" or "AI_AUTO" after the Start button is clicked.
+    pygame.draw.rect(screen, FACE, difficulty_overlay_rect)
+    draw_bevel(screen, difficulty_overlay_rect, raised=True, width=3)
+
+    # Title
+    title = get_font(32, bold=True).render("Select AI Difficulty", True, TEXT_COLOR)
+    screen.blit(title, title.get_rect(center=(difficulty_overlay_rect.centerx,
+                                              difficulty_overlay_rect.top + 40)))
+    # Mutually exclusive radio buttons
+    draw_radio(screen, easy_rect,   "Easy",   AI_DIFFICULTY == "Easy")
+    draw_radio(screen, medium_rect, "Medium", AI_DIFFICULTY == "Medium")
+    draw_radio(screen, hard_rect,   "Hard",   AI_DIFFICULTY == "Hard")
+
+    # Confirm button to lock in the choice and proceed to the game
+    draw_plate(screen, confirm_button_rect, "Confirm", TEXT_COLOR)
+
+
 def draw_cell(screen, row, col, outcome=None, exploded=None):
     x = BOARD_X + col * CELL_SIZE
     y = BOARD_Y + row * CELL_SIZE
@@ -284,15 +380,18 @@ def draw_labels(screen):
         screen.blit(text, text.get_rect(center=(x, y)))
 
 
-def draw_header(screen, outcome, seconds):
+def draw_header(screen, outcome, seconds, status=None):
     #Mines left on the left, status plate in the middle, timer on the right
+    #status is an optional (label, color) pair that replaces the plate text in the AI modes
     panel = pygame.Rect(BORDER - 3, BORDER - 3, WINDOW_WIDTH - 2 * BORDER + 6, HEADER_HEIGHT + 6)
     draw_bevel(screen, panel, raised=False, width=3)
     flags = sum(cell.is_flagged for grid_row in grid for cell in grid_row)
     draw_counter(screen, NUMBER_OF_MINES - flags, BORDER + 8, BORDER + 9)
     draw_counter(screen, seconds, WINDOW_WIDTH - BORDER - 78, BORDER + 9)
     plate = pygame.Rect((WINDOW_WIDTH - 150) // 2, BORDER + 11, 150, 34)
-    if outcome == "won":
+    if status is not None:
+        draw_plate(screen, plate, status[0], status[1])
+    elif outcome == "won":
         draw_plate(screen, plate, "You Win!", (20, 125, 40))
     elif outcome == "lost":
         draw_plate(screen, plate, "Boom!", (180, 30, 30))
@@ -304,10 +403,13 @@ def run_game():
         
     global NUMBER_OF_MINES # Critical: Variable is effected throughout multiple functions and thus should stay global
     global SAFE_CELLS
+    global GAME_MODE # Tracks the player's selected game mode ("AI", "AI_AUTO", or "Manual") from the start screen radio buttons
+    global AI_DIFFICULTY # Tracks the chosen AI difficulty ("Easy", "Medium", "Hard") selected on the overlay after Start
     # Variable is effected throughout multiple functions and thus should stay global
 
      # This block initializes the starting conditions of the game; as a window of a certain size displaying what it's for, and starting off with most conditions being at zero or the bare minimum   
     pygame.init()
+
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT)) # Initializes the size of the window to be the size of the board
     pygame.display.set_caption("Minesweeper") # Set window name to be "Minesweeper"
     first_move_done = False # Game starts off letting the user do the first move
@@ -316,7 +418,17 @@ def run_game():
     dragging=False # Starts off with the slider being motionless
     slider_value_picked = False 
     slider_value = 10
-        
+
+    # Tracks whether the AI difficulty overlay has been dismissed.
+    # Manual mode never shows the overlay so it's effectively True from the start of the game screen;
+    # for AI / AI_AUTO modes it stays False until the player confirms a difficulty.
+    difficulty_picked = False
+
+    # Easy AI state: whose turn it is, when the AI may move next, and the end-of-game plate text
+    ai_turn = False
+    ai_move_at = 0
+    end_status = None
+
     #Display-only state for the header and loss screen
     outcome = None
     exploded = None
@@ -341,6 +453,15 @@ def run_game():
                         dragging = True
                     elif button_rect.collidepoint(event.pos):
                         slider_value_picked = True
+                        # Manual mode skips the difficulty overlay; AI modes must still pick one.
+                        difficulty_picked = (GAME_MODE == "Manual")
+                    # Mutually exclusive mode selection: clicking a radio button overrides the others
+                    elif ai_mode_rect.collidepoint(event.pos):
+                        GAME_MODE = "AI"
+                    elif ai_auto_mode_rect.collidepoint(event.pos):
+                        GAME_MODE = "AI_AUTO"
+                    elif manual_mode_rect.collidepoint(event.pos):
+                        GAME_MODE = "Manual"
                 elif event.type == pygame.MOUSEBUTTONUP:
                     dragging = False
                 elif event.type == pygame.MOUSEMOTION and dragging:
@@ -361,8 +482,25 @@ def run_game():
 
                     
 
-            # If player clicks anywhere in the game and it doesn't end (can be revealing tile or clicking on the window or a revealed tile), 
-            elif event.type == pygame.MOUSEBUTTONDOWN and not game_over:
+            # Difficulty-selection overlay: shown only in AI / AI_AUTO modes.
+            # Blocks board input until the player confirms a difficulty.
+            elif not difficulty_picked:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    # Mutually exclusive difficulty selection
+                    if easy_rect.collidepoint(event.pos):
+                        AI_DIFFICULTY = "Easy"
+                    elif medium_rect.collidepoint(event.pos):
+                        AI_DIFFICULTY = "Medium"
+                    elif hard_rect.collidepoint(event.pos):
+                        AI_DIFFICULTY = "Hard"
+                    elif confirm_button_rect.collidepoint(event.pos):
+                        difficulty_picked = True
+                        if GAME_MODE == "AI_AUTO" and AI_DIFFICULTY == "Easy":
+                            ai_turn = True
+                            ai_move_at = pygame.time.get_ticks() + AI_MOVE_DELAY
+
+            # If player clicks anywhere in the game and it doesn't end (can be revealing tile or clicking on the window or a revealed tile),
+            elif event.type == pygame.MOUSEBUTTONDOWN and not game_over and not ai_turn:
                 col = (event.pos[0] - BOARD_X)//CELL_SIZE
                 row = (event.pos[1] - BOARD_Y)//CELL_SIZE
 
@@ -371,6 +509,7 @@ def run_game():
                 if 0 <= row < GRID_SIZE and 0 <= col < GRID_SIZE: 
                     if event.button == 1:
                         if not grid[row][col].is_flagged:
+                            was_hidden = not grid[row][col].is_revealed
                             if not first_move_done:
                                 first_click(row, col)
                                 first_move_done = True
@@ -381,18 +520,69 @@ def run_game():
                                     game_over = True
                                     print("Boom.")
                                     outcome = "lost"
+                                    # Play the sound effect when an explosion happens
+                                    explosion_sound.play()
                                     exploded = (row, col)
                                 elif result == "win":
                                     game_over = True
                                     print("You win!")
+                                    win_sound.play()
                                     outcome = "won"
+
+                            # Easy interactive mode: hand the turn to the AI, or record who won
+                            if GAME_MODE == "AI" and AI_DIFFICULTY == "Easy":
+                                if outcome == "lost":
+                                    end_status = ("AI Wins!", (180, 30, 30))
+                                elif outcome == "won":
+                                    end_status = ("Both Win!", (20, 125, 40))
+                                elif was_hidden:
+                                    ai_turn = True
+                                    ai_move_at = pygame.time.get_ticks() + AI_MOVE_DELAY
                     elif event.button == 3:
                         if not grid[row][col].is_revealed:
                             if grid[row][col].is_flagged:
                                 grid[row][col].is_flagged = False
                             else:
                                 grid[row][col].is_flagged = True
-                                    
+                                flag_sound.play()
+
+        # Easy AI move: uncovers one random covered cell once its delay has passed
+        if ai_turn and not game_over and pygame.time.get_ticks() >= ai_move_at:
+            move = easy_ai_move()
+            if move is None:
+                ai_turn = False
+            else:
+                row, col = move
+                if not first_move_done:
+                    first_click(row, col)
+                    first_move_done = True
+                    start_ticks = pygame.time.get_ticks()
+                    result = "win" if revealed_safe_cells == SAFE_CELLS else True
+                else:
+                    result = reveal(row, col)
+
+                if not result:
+                    game_over = True
+                    print("Boom.")
+                    outcome = "lost"
+                    explosion_sound.play()
+                    exploded = (row, col)
+                    if GAME_MODE == "AI":
+                        end_status = ("You Win!", (20, 125, 40))
+                elif result == "win":
+                    game_over = True
+                    win_sound.play()
+                    outcome = "won"
+                    if GAME_MODE == "AI":
+                        print("You both win!")
+                        end_status = ("Both Win!", (20, 125, 40))
+                    else:
+                        print("AI wins!")
+                        end_status = ("AI Wins!", (20, 125, 40))
+
+                ai_turn = GAME_MODE == "AI_AUTO"
+                ai_move_at = pygame.time.get_ticks() + AI_MOVE_DELAY
+
         if not slider_value_picked:
             #draw the slider
             screen.fill(FACE)
@@ -408,6 +598,11 @@ def run_game():
             pygame.draw.rect(screen, handle_color, handle_rect)
             draw_bevel(screen, handle_rect)
 
+            # draw the mode-selection radio buttons (mutually exclusive)
+            draw_radio(screen, ai_mode_rect, "AI Mode (Interactive)", GAME_MODE == "AI")
+            draw_radio(screen, ai_auto_mode_rect, "AI Mode (Automatic)", GAME_MODE == "AI_AUTO")
+            draw_radio(screen, manual_mode_rect, "Manual Mode", GAME_MODE == "Manual")
+
             #draw the start button
             draw_plate(screen, button_rect, "Start", TEXT_COLOR)
             hint = get_font(22).render("Left click: reveal    Right click: flag", True, (80, 80, 80))
@@ -416,7 +611,21 @@ def run_game():
             if first_move_done and not game_over:
                 seconds = min(999, (pygame.time.get_ticks() - start_ticks) // 1000)
             screen.fill(FACE)
-            draw_header(screen, outcome, seconds)
+            # Header plate for the Easy AI modes: the result once the game ends, otherwise whose turn it is
+            status = end_status
+            if status is None and difficulty_picked and not game_over and GAME_MODE != "Manual" and AI_DIFFICULTY == "Easy":
+                if ai_turn:
+                    status = ("AI's Turn", (200, 100, 0))
+                else:
+                    status = ("Your Turn", (30, 60, 200))
+            draw_header(screen, outcome, seconds, status)
             draw_labels(screen)
             draw_board(screen, outcome, exploded)
+
+            # Draw the AI difficulty overlay on top of the (empty) board so the
+            # player sees the game context behind the modal. Only reached when
+            # GAME_MODE is "AI" or "AI_AUTO" because Manual mode sets
+            # difficulty_picked = True immediately after Start.
+            if not difficulty_picked:
+                draw_difficulty_overlay(screen)
         pygame.display.flip()
