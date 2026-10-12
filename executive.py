@@ -113,7 +113,7 @@ AI_DIFFICULTY = "Easy"
 AI_MOVE_DELAY = 500 # Editable: Milliseconds the AI waits before each action so every move can be watched
 
 # Maps a difficulty name to a function grid -> ai_solver.AIMove (or None when no move is left).
-# Add Easy here; a difficulty with no entry leaves the AI idle.
+# Easy is added below easy_ai_move; a difficulty with no entry leaves the AI idle.
 AI_STRATEGIES = {
     "Medium": ai_solver.medium_move,
     "Hard": ai_solver.hard_move,
@@ -226,6 +226,24 @@ def reveal(input_row, input_col): # Critical Function: Uses the recursive sweeps
     # If all of the safe cells have been revealed, end the game announcing the player's win  
 
     return True
+
+
+# Easy AI: picks a completely random cell out of the covered, unflagged cells
+def easy_ai_move(board):
+    remaining = []
+    for i in range(GRID_SIZE):
+        for j in range(GRID_SIZE):
+            if not board[i][j].is_revealed and not board[i][j].is_flagged:
+                remaining.append((i, j))
+
+    if len(remaining) == 0:
+        return None
+
+    row, col = remaining[random.randint(0, len(remaining) - 1)]
+    return ai_solver.AIMove("reveal", row, col, "guess", None,
+                            f"Open {ai_solver.cell_name(row, col)}: random pick")
+
+AI_STRATEGIES["Easy"] = easy_ai_move
 
 _fonts = {}
 # Used for get_font
